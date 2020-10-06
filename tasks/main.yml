@@ -1,0 +1,249 @@
+---
+- name: gather operating system variables
+  include_vars: "{{ item }}"
+  with_first_found:
+    - "{{ ansible_distribution | lower }}-{{ ansible_distribution_version | lower }}.yml"
+    - "{{ ansible_distribution | lower }}-{{ ansible_distribution_major_version | lower }}.yml"
+    - "{{ ansible_distribution_file_variety | lower }}-{{ ansible_distribution_major_version | lower }}.yml"
+    - "{{ ansible_os_family | lower }}-{{ ansible_distribution_major_version | lower }}.yml"
+    - "{{ ansible_distribution | lower }}.yml"
+    - "{{ ansible_os_family | lower }}-{{ ansible_distribution_version.split('.')[0] }}.yml"
+    - "{{ ansible_os_family | lower }}.yml"
+  become: true
+  tags: blackbox_exporter
+
+- name: assert usage of systemd as an init system
+  assert:
+    that: ansible_service_mgr == 'systemd'
+    msg: "This module only works with systemd"
+
+- name: get systemd version
+  command: systemctl --version
+  changed_when: false
+  check_mode: false
+  register: __systemd_version
+
+- name: set systemd version fact
+  set_fact:
+    blackbox_exporter_systemd_version: "{{ __systemd_version.stdout_lines[0].split(' ')[-1] }}"
+  become: true
+  tags: blackbox_exporter
+
+- name: create system group
+  group:
+    name: "{{ blackbox_exporter_system_group }}"
+    system: true
+    state: present
+  when: blackbox_exporter_system_group != "root"
+  become: true
+  tags: blackbox_exporter
+
+- name: create system user
+  user:
+    name: "{{ blackbox_exporter_system_user }}"
+    system: true
+    shell: "/sbin/nologin"
+    group: "{{ blackbox_exporter_system_group }}"
+    createhome: false
+  when: blackbox_exporter_system_user != "root"
+  become: true
+  tags: blackbox_exporter
+
+- name: create data directory
+  file:
+    path: "{{ blackbox_exporter_config_dir }}"
+    state: directory
+    owner: "{{ blackbox_exporter_system_user }}"
+    group: "{{ blackbox_exporter_system_group }}"
+    mode: 0755
+  become: true
+  tags: blackbox_exporter
+
+- name: check if blackbox_exporter is installed
+  stat:
+    path: "{{ blackbox_exporter_binary_local_dir }}/blackbox_exporter"
+  register: __blackbox_exporter_is_installed
+  become: true
+  tags: blackbox_exporter
+
+- name: gather currently installed blackbox_exporter version (if any)
+  command: "{{ blackbox_exporter_binary_local_dir }}/blackbox_exporter --version"
+  args:
+    warn: false
+  changed_when: false
+  register: __blackbox_exporter_current_version_output
+  when: __blackbox_exporter_is_installed.stat.exists
+  become: true
+  tags: blackbox_exporter
+
+- block:
+  - name: get latest release
+    uri:
+      url: "https://api.github.com/repos/prometheus/blackbox_exporter/releases/latest"
+      method: GET
+      return_content: true
+      status_code: 200
+      body_format: json
+      validate_certs: false
+      user: "{{ lookup('env', 'GH_USER') | default(omit) }}"
+      password: "{{ lookup('env', 'GH_TOKEN') | default(omit) }}"
+    environment: "{{proxy_env}}"
+    no_log: "{{ not lookup('env', 'MOLECULE_DEBUG') | bool }}"
+    register: _latest_release
+    until: _latest_release.status == 200
+    retries: 5
+    become: true
+    tags: blackbox_exporter
+
+  - name: set blackbox_exporter version to {{ _latest_release.json.tag_name[1:] }}"
+    set_fact:
+      blackbox_exporter_version: "{{ _latest_release.json.tag_name[1:] }}"
+    become: true
+    tags: blackbox_exporter
+  when: blackbox_exporter_version == "latest"
+  delegate_to: localhost
+  run_once: true
+
+- block:
+  - name: get checksum list from github
+    set_fact:
+      _checksums: "{{ lookup('url', 'https://github.com/prometheus/blackbox_exporter/releases/download/v' + blackbox_exporter_version + '/sha256sums.txt', wantlist=True) | list }}"
+    environment: "{{proxy_env}}"
+    run_once: true
+    become: true
+    tags: blackbox_exporter
+
+  - name: "get checksum for {{ go_arch }} architecture"
+    set_fact:
+      blackbox_exporter_checksum: "{{ item.split(' ')[0] }}"
+    with_items: "{{ _checksums }}"
+    when: "('linux-' + go_arch + '.tar.gz') in item"
+    become: true
+    tags: blackbox_exporter
+
+  - name: download binary to local folder
+    get_url:
+      url: "https://github.com/prometheus/blackbox_exporter/releases/download/v{{ blackbox_exporter_version }}/blackbox_exporter-{{ blackbox_exporter_version }}.linux-{{ go_arch }}.tar.gz"
+      dest: "/tmp/blackbox_exporter-{{ blackbox_exporter_version }}.linux-{{ go_arch }}.tar.gz"
+      checksum: "sha256:{{ blackbox_exporter_checksum }}"
+    environment: "{{proxy_env}}"
+    register: _download_binary
+    until: _download_binary is succeeded
+    retries: 5
+    delay: 2
+    delegate_to: localhost
+    check_mode: false
+    become: true
+    tags: blackbox_exporter
+
+  - name: unpack binary
+    unarchive:
+      src: "/tmp/blackbox_exporter-{{ blackbox_exporter_version }}.linux-{{ go_arch }}.tar.gz"
+      dest: "/tmp"
+      creates: "/tmp/blackbox_exporter-{{ blackbox_exporter_version }}.linux-{{ go_arch }}/blackbox_exporter"
+    delegate_to: localhost
+    check_mode: false
+    become: true
+    tags: blackbox_exporter
+
+  - name: propagate binaries
+    copy:
+      src: "/tmp/blackbox_exporter-{{ blackbox_exporter_version }}.linux-{{ go_arch }}/blackbox_exporter"
+      dest: "{{ blackbox_exporter_binary_local_dir }}/blackbox_exporter"
+      mode: 0755
+      owner: root
+      group: root
+    notify: restart blackbox_exporter
+    when: not ansible_check_mode
+    become: true
+    tags: blackbox_exporter
+  when: (not __blackbox_exporter_is_installed.stat.exists) or (__blackbox_exporter_current_version_output.stderr_lines[0].split(" ")[2] != blackbox_exporter_version)
+
+- name: configure blackbox_exporter
+  template:
+    src: blackbox_exporter.yml.j2
+    dest: "{{ blackbox_exporter_config_dir }}/config.yml"
+    owner: "{{ blackbox_exporter_system_user }}"
+    group: "{{ blackbox_exporter_system_group }}"
+    mode: 0644
+  notify: reload blackbox_exporter
+  become: true
+  tags: blackbox_exporter
+
+- name: copy consul-agent service json
+  template:
+    src: consul_agent_service.json.j2
+    dest: /etc/consul.d/blackbox_exporter.json
+    owner: consul
+    group: consul
+    mode: 0644
+  when: blackbox_exporter_create_consul_agent_service
+  notify: reload consul
+  become: true
+  tags: blackbox_exporter
+
+- name: create systemd service unit
+  template:
+    src: blackbox_exporter.service.j2
+    dest: /etc/systemd/system/blackbox_exporter.service
+    owner: root
+    group: root
+    mode: 0644
+  notify: restart blackbox_exporter
+  become: true
+  tags: blackbox_exporter
+
+- name: install selinux dependencies
+  package:
+    name: "{{ item }}"
+    state: present
+  environment: "{{ proxy_env }}"
+  with_items: "{{ pushgateway_selinux_packages }}"
+  register: _install_packages
+  until: _install_packages is succeeded
+  retries: 5
+  delay: 2
+  when:
+    - ansible_version.full is version_compare('2.4', '>=')
+    - ansible_selinux.status == "enabled"
+  become: true
+  tags: blackbox_exporter
+
+- name: allow binding to port in selinux
+  seport:
+    ports: "{{ blackbox_exporter_web_listen_port }}"
+    proto: tcp
+    setype: http_port_t
+    state: present
+  when:
+    - ansible_version.full is version_compare('2.4', '>=')
+    - ansible_selinux.status == "enabled"
+  become: true
+  tags: blackbox_exporter
+
+- name: allow access to port on firewalld
+  firewalld:
+    port: "{{ blackbox_exporter_web_listen_port }}/tcp"
+    permanent: yes
+    state: true
+  when: blackbox_exporter_firewalld_state == "enabled"
+  register: "_firewalld_blackbox_exporter_state"
+  become: true
+  tags: blackbox_exporter
+
+- name: reload firewalld service
+  service:
+    name: firewalld
+    state: reloaded
+  when: _firewalld_blackbox_exporter_state['changed']
+  become: true
+  tags: blackbox_exporter
+
+- name: ensure blackbox exporter is enabled on boot
+  systemd:
+    daemon_reload: true
+    name: blackbox_exporter
+    enabled: true
+    state: started
+  become: true
+  tags: blackbox_exporter

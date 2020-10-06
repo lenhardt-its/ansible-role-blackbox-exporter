@@ -1,0 +1,51 @@
+{{ ansible_managed | comment }}
+
+[Unit]
+Description=Prometheus Blackbox Exporter
+Dokumentation=Dokumentation=https://github.com/prometheus/pushgateway
+After=network-online.target
+StartLimitInterval=0
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User={{ blackbox_exporter_system_user }}
+Group={{ blackbox_exporter_system_group }}
+PermissionsStartOnly=true
+ExecReload=/bin/kill -HUP $MAINPID
+ExecStart={{ blackbox_exporter_binary_local_dir }}/blackbox_exporter \
+  --config.file={{ blackbox_exporter_config_dir }}/config.yml \
+  --log.level={{ blackbox_exporter_log_level }} \
+  --log.format={{ blackbox_exporter_log_format }} \
+  {% for flag, flag_value in blackbox_exporter_cli_flags.items() -%}
+  --{{ flag }}={{ flag_value }} \
+  {% endfor -%}
+  --web.listen-address={{ blackbox_exporter_web_listen_address }}:{{ blackbox_exporter_web_listen_port }}
+
+SyslogIdentifier=blackbox_exporter
+KillMode=process
+Restart=always
+RestartSec=5
+
+LockPersonality=true
+NoNewPrivileges=true
+MemoryDenyWriteExecute=true
+PrivateTmp=true
+ProtectHome=true
+RemoveIPC=true
+{% if blackbox_exporter_systemd_version | int >= 242 %}
+RestrictSUIDSGID=true
+{% endif %}
+
+{% if blackbox_exporter_systemd_version | int >= 232 %}
+AmbientCapabilities=CAP_NET_RAW
+ProtectControlGroups=true
+ProtectKernelModules=true
+ProtectKernelTunables=yes
+ProtectSystem=strict
+{% else %}
+ProtectSystem=full
+{% endif %}
+
+[Install]
+WantedBy=multi-user.target
