@@ -26,11 +26,18 @@ All variables which can be overridden are stored in [defaults/main.yml](defaults
 | Name           | Default Value | Description                        |
 | -------------- | ------------- | -----------------------------------|
 | `proxy_env` | {} | Proxy environment variables |
-| `blackbox_exporter_create_consul_agent_service` | "true" | Add consul agent config snipped |
-| `blackbox_exporter_version` | 0.15.1 | Blackbox exporter package version |
-| `blackbox_exporter_web_listen_address` | 0.0.0.0:9115 | Address on which blackbox exporter will be listening |
-| `blackbox_exporter_cli_flags` | {} | Additional configuration flags passed to blackbox exporter binary at startup |
-| `blackbox_exporter_configuration_modules` | http_2xx: { prober: http, timeout: 5s, http: '' } | |
+| `blackbox_exporter_version` | 0.18.0 | package version |
+| `blackbox_exporter_config_dir` | /etc/blackbox_exporter | config dir |
+| `blackbox_exporter_binary_local_dir` | /usr/local/bin | install bin dir |
+| `blackbox_exporter_web_listen_address` | 0.0.0.0 | default listen address |
+| `blackbox_exporter_web_listen_port` | 9115 | default listen port |
+| `blackbox_exporter_allow_firewall` | false | allow port on firewall |
+| `blackbox_exporter_system_user` | "{{ prometheus_user | default('prometheus') }}" | default run user |
+| `blackbox_exporter_system_group` | "{{ prometheus_group | default('prometheus') }}" | default run group |
+| `blackbox_exporter_log_level` | warn | default log level |
+| `blackbox_exporter_log_format` | json | default log format |
+| `blackbox_exporter_cli_flags` | {} | additional configuration flags passed to blackbox exporter binary at startup |
+| `blackbox_exporter_configuration_modules` | {} | configure modules |
 
 ## Example
 
@@ -40,7 +47,7 @@ All variables which can be overridden are stored in [defaults/main.yml](defaults
 - hosts: all
   become: true
   roles:
-    - ansile-role-blackbox-exporter
+    - onkeldom.blackbox-exporter
 ```
 
 ## Contributing
