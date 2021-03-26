@@ -1,4 +1,0 @@
----
-blackbox_exporter_selinux_packages:
-  - python-selinux
-  - policycoreutils
