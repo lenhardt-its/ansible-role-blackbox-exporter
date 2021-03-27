@@ -1,6 +1,6 @@
 ---
 galaxy_info:
-  role_name: blackbox-exporter
+  role_name: blackbox_exporter
   author: Dominik Lenhardt
   description: Installing and configure Prometheus Blackbox Exporter
   license: "MIT"

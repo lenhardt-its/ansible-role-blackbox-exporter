@@ -49,7 +49,7 @@ All variables which can be overridden are stored in [defaults/main.yml](defaults
 - hosts: all
   become: true
   roles:
-    - onkeldom.blackbox-exporter
+    - onkeldom.blackbox_exporter
 ```
 
 ## Contributing
