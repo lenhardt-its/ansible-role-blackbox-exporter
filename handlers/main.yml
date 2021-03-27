@@ -13,3 +13,17 @@
     state: reloaded
   become: true
   tags: blackbox_exporter
+
+- name: reload ufw
+  systemd:
+    name: ufw
+    state: reloaded
+  tags: blackbox_exporter
+  become: true
+
+- name: reload firewalld
+  systemd:
+    name: firewalld
+    state: reloaded
+  tags: blackbox_exporter
+  become: true
