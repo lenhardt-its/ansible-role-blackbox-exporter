@@ -34,8 +34,8 @@ All variables which can be overridden are stored in [defaults/main.yml](defaults
 | `blackbox_exporter_web_listen_address` | 0.0.0.0 | default listen address |
 | `blackbox_exporter_web_listen_port` | 9115 | default listen port |
 | `blackbox_exporter_allow_firewall` | false | allow port on firewall |
-| `blackbox_exporter_system_user` | "{{ prometheus_user | default('prometheus') }}" | default run user |
-| `blackbox_exporter_system_group` | "{{ prometheus_group | default('prometheus') }}" | default run group |
+| `blackbox_exporter_system_user` | prometheus | default run user |
+| `blackbox_exporter_system_group` | prometheus | default run group |
 | `blackbox_exporter_log_level` | warn | default log level |
 | `blackbox_exporter_log_format` | json | default log format |
 | `blackbox_exporter_cli_flags` | {} | additional configuration flags passed to blackbox exporter binary at startup |
