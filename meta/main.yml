@@ -24,6 +24,6 @@ galaxy_info:
   - linux
   - monitoring
   - prometheus
-  - blackbox-exporter
+  - blackbox_exporter
   - exporter
 dependencies: []
