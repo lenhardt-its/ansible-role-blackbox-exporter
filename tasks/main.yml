@@ -16,12 +16,14 @@
   assert:
     that: ansible_service_mgr == 'systemd'
     msg: "This module only works with systemd"
+  tags: blackbox_exporter
 
 - name: get systemd version
   command: systemctl --version
   changed_when: false
   check_mode: false
   register: __systemd_version
+  tags: blackbox_exporter
 
 - name: set systemd version fact
   set_fact:
