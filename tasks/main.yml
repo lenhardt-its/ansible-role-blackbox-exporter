@@ -159,7 +159,7 @@
     when: not ansible_check_mode
     become: true
     tags: blackbox_exporter
-  when: (not __blackbox_exporter_is_installed.stat.exists) or (__blackbox_exporter_current_version_output.stderr_lines[0].split(" ")[2] != blackbox_exporter_version)
+  when: (not __blackbox_exporter_is_installed.stat.exists) or (__blackbox_exporter_current_version_output.stdout.split(" ")[2] != blackbox_exporter_version)
 
 - name: configure blackbox_exporter
   template:
