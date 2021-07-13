@@ -24,26 +24,8 @@ SyslogIdentifier=blackbox_exporter
 KillMode=process
 Restart=always
 RestartSec=5
-
-LockPersonality=true
-NoNewPrivileges=true
-MemoryDenyWriteExecute=true
-PrivateTmp=true
-ProtectHome=true
-RemoveIPC=true
-{% if blackbox_exporter_systemd_version | int >= 242 %}
-RestrictSUIDSGID=true
-{% endif %}
-
-{% if blackbox_exporter_systemd_version | int >= 232 %}
-AmbientCapabilities=CAP_NET_RAW
-ProtectControlGroups=true
-ProtectKernelModules=true
-ProtectKernelTunables=yes
-ProtectSystem=strict
-{% else %}
-ProtectSystem=full
-{% endif %}
+LimitNOFILE={{ blackbox_exporter_limit_nofile | default('8192') }}
+LimitMEMLOCK=infinity
 
 [Install]
 WantedBy=multi-user.target

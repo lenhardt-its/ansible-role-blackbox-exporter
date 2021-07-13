@@ -19,7 +19,6 @@ Deploy and manage [blackbox exporter](https://github.com/prometheus/blackbox_exp
 ## Requirements
 
 - Ansible >= 2.9 (It might work on previous versions, but we cannot guarantee it)
-- Community Packages: `ansible-galaxy collection install community.general`
 
 ## Role Variables
 
@@ -28,16 +27,16 @@ All variables which can be overridden are stored in [defaults/main.yml](defaults
 | Name           | Default Value | Description                        |
 | -------------- | ------------- | -----------------------------------|
 | `proxy_env` | {} | Proxy environment variables |
-| `blackbox_exporter_version` | 0.18.0 | package version |
+| `blackbox_exporter_version` | 0.19.0 | package version |
 | `blackbox_exporter_config_dir` | /etc/blackbox_exporter | config dir |
 | `blackbox_exporter_binary_local_dir` | /usr/local/bin | install bin dir |
 | `blackbox_exporter_web_listen_address` | 0.0.0.0 | default listen address |
 | `blackbox_exporter_web_listen_port` | 9115 | default listen port |
-| `blackbox_exporter_allow_firewall` | false | allow port on firewall |
 | `blackbox_exporter_system_user` | prometheus | default run user |
 | `blackbox_exporter_system_group` | prometheus | default run group |
 | `blackbox_exporter_log_level` | warn | default log level |
 | `blackbox_exporter_log_format` | json | default log format |
+| `blackbox_exporter_limit_nofile` | 8192 | nofile limit in systemd unit defined |
 | `blackbox_exporter_cli_flags` | {} | additional configuration flags passed to blackbox exporter binary at startup |
 | `blackbox_exporter_configuration_modules` | {} | configure modules |
 

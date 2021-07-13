@@ -12,25 +12,6 @@
   become: true
   tags: blackbox_exporter
 
-- name: assert usage of systemd as an init system
-  assert:
-    that: ansible_service_mgr == 'systemd'
-    msg: "This module only works with systemd"
-  tags: blackbox_exporter
-
-- name: get systemd version
-  command: systemctl --version
-  changed_when: false
-  check_mode: false
-  register: __systemd_version
-  tags: blackbox_exporter
-
-- name: set systemd version fact
-  set_fact:
-    blackbox_exporter_systemd_version: "{{ __systemd_version.stdout_lines[0].split(' ')[-1] }}"
-  become: true
-  tags: blackbox_exporter
-
 - name: create system group
   group:
     name: "{{ blackbox_exporter_system_group }}"
@@ -51,7 +32,7 @@
   become: true
   tags: blackbox_exporter
 
-- name: create data directory
+- name: create directories
   file:
     path: "{{ blackbox_exporter_config_dir }}"
     state: directory
@@ -61,14 +42,14 @@
   become: true
   tags: blackbox_exporter
 
-- name: check if blackbox_exporter is installed
+- name: check if is installed
   stat:
     path: "{{ blackbox_exporter_binary_local_dir }}/blackbox_exporter"
   register: __blackbox_exporter_is_installed
   become: true
   tags: blackbox_exporter
 
-- name: gather currently installed blackbox_exporter version (if any)
+- name: gather currently installed version (if any)
   command: "{{ blackbox_exporter_binary_local_dir }}/blackbox_exporter --version"
   args:
     warn: false
@@ -78,90 +59,95 @@
   become: true
   tags: blackbox_exporter
 
-- block:
-  - name: get latest release
-    uri:
-      url: "https://api.github.com/repos/prometheus/blackbox_exporter/releases/latest"
-      method: GET
-      return_content: true
-      status_code: 200
-      body_format: json
-      validate_certs: false
-      user: "{{ lookup('env', 'GH_USER') | default(omit) }}"
-      password: "{{ lookup('env', 'GH_TOKEN') | default(omit) }}"
-    environment: "{{proxy_env}}"
-    no_log: "{{ not lookup('env', 'MOLECULE_DEBUG') | bool }}"
-    register: _latest_release
-    until: _latest_release.status == 200
-    retries: 5
-    become: true
-    tags: blackbox_exporter
+- name: get latest release
+  uri:
+    url: "https://api.github.com/repos/prometheus/blackbox_exporter/releases/latest"
+    method: GET
+    return_content: true
+    status_code: 200
+    body_format: json
+    validate_certs: false
+    user: "{{ lookup('env', 'GH_USER') | default(omit) }}"
+    password: "{{ lookup('env', 'GH_TOKEN') | default(omit) }}"
+  environment: "{{ proxy_env }}"
+  no_log: "{{ not lookup('env', 'MOLECULE_DEBUG') | bool }}"
+  register: _latest_release
+  until: _latest_release.status == 200
+  retries: 5
+  become: true
+  tags: blackbox_exporter
+  when: blackbox_exporter_version == "latest"
 
-  - name: set blackbox_exporter version to {{ _latest_release.json.tag_name[1:] }}"
-    set_fact:
-      blackbox_exporter_version: "{{ _latest_release.json.tag_name[1:] }}"
-    become: true
-    tags: blackbox_exporter
+- name: set blackbox_exporter version to {{ _latest_release.json.tag_name[1:] }}"
+  set_fact:
+    blackbox_exporter_version: "{{ _latest_release.json.tag_name[1:] }}"
+  become: true
+  tags: blackbox_exporter
   when: blackbox_exporter_version == "latest"
   delegate_to: localhost
   run_once: true
 
-- block:
-  - name: get checksum list from github
-    set_fact:
-      _checksums: "{{ lookup('url', 'https://github.com/prometheus/blackbox_exporter/releases/download/v' + blackbox_exporter_version + '/sha256sums.txt', wantlist=True) | list }}"
-    environment: "{{proxy_env}}"
-    run_once: true
-    become: true
-    tags: blackbox_exporter
-
-  - name: "get checksum for {{ go_arch }} architecture"
-    set_fact:
-      blackbox_exporter_checksum: "{{ item.split(' ')[0] }}"
-    with_items: "{{ _checksums }}"
-    when: "('linux-' + go_arch + '.tar.gz') in item"
-    become: true
-    tags: blackbox_exporter
-
-  - name: download binary to local folder
-    get_url:
-      url: "https://github.com/prometheus/blackbox_exporter/releases/download/v{{ blackbox_exporter_version }}/blackbox_exporter-{{ blackbox_exporter_version }}.linux-{{ go_arch }}.tar.gz"
-      dest: "/tmp/blackbox_exporter-{{ blackbox_exporter_version }}.linux-{{ go_arch }}.tar.gz"
-      checksum: "sha256:{{ blackbox_exporter_checksum }}"
-    environment: "{{proxy_env}}"
-    register: _download_binary
-    until: _download_binary is succeeded
-    retries: 5
-    delay: 2
-    delegate_to: localhost
-    check_mode: false
-    become: true
-    tags: blackbox_exporter
-
-  - name: unpack binary
-    unarchive:
-      src: "/tmp/blackbox_exporter-{{ blackbox_exporter_version }}.linux-{{ go_arch }}.tar.gz"
-      dest: "/tmp"
-      creates: "/tmp/blackbox_exporter-{{ blackbox_exporter_version }}.linux-{{ go_arch }}/blackbox_exporter"
-    delegate_to: localhost
-    check_mode: false
-    become: true
-    tags: blackbox_exporter
-
-  - name: propagate binaries
-    copy:
-      src: "/tmp/blackbox_exporter-{{ blackbox_exporter_version }}.linux-{{ go_arch }}/blackbox_exporter"
-      dest: "{{ blackbox_exporter_binary_local_dir }}/blackbox_exporter"
-      mode: 0755
-      owner: root
-      group: root
-    notify: restart blackbox_exporter
-    when: not ansible_check_mode
-    become: true
-    tags: blackbox_exporter
+- name: get checksum list from github
+  set_fact:
+    _checksums: "{{ lookup('url', 'https://github.com/prometheus/blackbox_exporter/releases/download/v' + blackbox_exporter_version + '/sha256sums.txt', wantlist=True) | list }}"
+  environment: "{{proxy_env}}"
+  run_once: true
+  become: true
+  tags: blackbox_exporter
   when: (not __blackbox_exporter_is_installed.stat.exists) or (__blackbox_exporter_current_version_output.stderr_lines[0].split(" ")[2] != blackbox_exporter_version)
 
-- name: configure blackbox_exporter
+- name: "get checksum for {{ go_arch }} architecture"
+  set_fact:
+    blackbox_exporter_checksum: "{{ item.split(' ')[0] }}"
+  with_items: "{{ _checksums }}"
+  when:
+    - "('linux-' + go_arch + '.tar.gz') in item"
+    - (not __blackbox_exporter_is_installed.stat.exists) or (__blackbox_exporter_current_version_output.stderr_lines[0].split(" ")[2] != blackbox_exporter_version)
+  become: true
+  tags: blackbox_exporter
+
+- name: download binary to local folder
+  get_url:
+    url: "https://github.com/prometheus/blackbox_exporter/releases/download/v{{ blackbox_exporter_version }}/blackbox_exporter-{{ blackbox_exporter_version }}.linux-{{ go_arch }}.tar.gz"
+    dest: "/tmp/blackbox_exporter-{{ blackbox_exporter_version }}.linux-{{ go_arch }}.tar.gz"
+    checksum: "sha256:{{ blackbox_exporter_checksum }}"
+  environment: "{{proxy_env}}"
+  register: _download_binary
+  until: _download_binary is succeeded
+  retries: 5
+  delay: 2
+  delegate_to: localhost
+  check_mode: false
+  become: true
+  tags: blackbox_exporter
+  when: (not __blackbox_exporter_is_installed.stat.exists) or (__blackbox_exporter_current_version_output.stderr_lines[0].split(" ")[2] != blackbox_exporter_version)
+
+- name: unpack binary
+  unarchive:
+    src: "/tmp/blackbox_exporter-{{ blackbox_exporter_version }}.linux-{{ go_arch }}.tar.gz"
+    dest: "/tmp"
+    creates: "/tmp/blackbox_exporter-{{ blackbox_exporter_version }}.linux-{{ go_arch }}/blackbox_exporter"
+  delegate_to: localhost
+  check_mode: false
+  become: true
+  tags: blackbox_exporter
+  when: (not __blackbox_exporter_is_installed.stat.exists) or (__blackbox_exporter_current_version_output.stderr_lines[0].split(" ")[2] != blackbox_exporter_version)
+
+- name: propagate binaries
+  copy:
+    src: "/tmp/blackbox_exporter-{{ blackbox_exporter_version }}.linux-{{ go_arch }}/blackbox_exporter"
+    dest: "{{ blackbox_exporter_binary_local_dir }}/blackbox_exporter"
+    mode: 0755
+    owner: root
+    group: root
+  notify: restart blackbox_exporter
+  when:
+    - not ansible_check_mode
+    - (not __blackbox_exporter_is_installed.stat.exists) or (__blackbox_exporter_current_version_output.stderr_lines[0].split(" ")[2] != blackbox_exporter_version)
+  become: true
+  tags: blackbox_exporter
+
+- name: configure
   template:
     src: blackbox_exporter.yml.j2
     dest: "{{ blackbox_exporter_config_dir }}/config.yml"
@@ -185,95 +171,7 @@
   become: true
   tags: blackbox_exporter
 
-- name: enable capabilities to ports lower than port 1024
-  capabilities:
-    path: "{{ blackbox_exporter_binary_install_dir }}/blackbox_exporter"
-    capability: CAP_NET_BIND_SERVICE+ep
-    state: present
-  when: blackbox_exporter_web_listen_port <= 1024
-  tags: blackbox_exporter
-
-- name: install selinux dependencies
-  package:
-    name: "{{ item }}"
-    state: present
-  environment: "{{ proxy_env }}"
-  with_items: "{{ blackbox_exporter_selinux_packages }}"
-  register: _install_packages
-  until: _install_packages is succeeded
-  retries: 5
-  delay: 2
-  when:
-    - ansible_version.full is version_compare('2.4', '>=')
-    - ansible_selinux.status == "enabled"
-  become: true
-  tags: blackbox_exporter
-
-- name: allow binding to port in selinux
-  seport:
-    ports: "{{ blackbox_exporter_web_listen_port }}"
-    proto: tcp
-    setype: http_port_t
-    state: present
-  when:
-    - ansible_version.full is version_compare('2.4', '>=')
-    - ansible_selinux.status == "enabled"
-  become: true
-  tags: blackbox_exporter
-
-- name: check whether ufw status is active
-  command: "ufw status"
-  changed_when: False
-  ignore_errors: True
-  register: _ufw_status
-  become: true
-  when:
-    - blackbox_exporter_allow_firewall
-    - ansible_os_family == 'Debian'
-  tags: blackbox_exporter
-
-- name: check whether firewalld status is active
-  command: "firewall-cmd --state"
-  changed_when: False
-  ignore_errors: True
-  register: _firewalld_status
-  become: true
-  when: ansible_os_family == 'RedHat'
-  tags: blackbox_exporter
-
-- name: configure ufw
-  community.general.ufw:
-    rule: allow
-    port: "{{ blackbox_exporter_web_listen_port }}"
-    proto: tcp
-    state: enabled
-    comment: "Blackbox Exporter"
-  changed_when: False
-  ignore_errors: True
-  notify: reload ufw
-  become: true
-  tags: blackbox_exporter
-  when:
-    - "'active' in _ufw_status.stdout"
-    - ansible_os_family == 'Debian'
-    - blackbox_exporter_allow_firewall
-
-- name: configure firewalld
-  firewalld:
-    port: "{{ blackbox_exporter_web_listen_port }}/tcp"
-    permanent: yes
-    state: true
-  changed_when: False
-  ignore_errors: True
-  when:
-    - "'running' in _firewalld_status.stdout"
-    - blackbox_exporter_allow_firewall
-    - ansible_os_family == 'RedHat'
-  notify: reload firewalld
-  become: true
-  tags: blackbox_exporter
-
-- name: ensure blackbox exporter is enabled on boot
+- name: ensure service is enabled on boot
   systemd:
     daemon_reload: true
     name: blackbox_exporter
